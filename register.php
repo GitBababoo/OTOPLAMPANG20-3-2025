@@ -2,44 +2,117 @@
 include "inc/db_config.php";
 session_start();
 
+function isThaiPhoneNumber($phone_number) {
+    // Remove any non-digit characters
+    $phone_number = preg_replace('/[^0-9]/', '', $phone_number);
+
+    // Check if it starts with 0 and has 10 digits
+    return (preg_match('/^0[0-9]{9}$/', $phone_number) === 1);
+}
+
+function isValidName($name) {
+    // Allows Thai and English characters, spaces, and hyphens
+    return preg_match('/^[a-zA-Z\p{Thai} \-]+$/u', $name);
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Validate Input
-    if (empty($_POST['username']) || empty($_POST['email']) || empty($_POST['password']) || empty($_POST['first_name']) || empty($_POST['last_name']) || empty($_POST['phone_number'])) {
-        echo '<div class="alert alert-danger text-center">กรุณากรอกข้อมูลให้ครบถ้วน</div>';
-    } else {
-        $username = mysqli_real_escape_string($conn, $_POST['username']);
-        $email = mysqli_real_escape_string($conn, $_POST['email']);
-        $password = $_POST['password'];
-        $first_name = mysqli_real_escape_string($conn, $_POST['first_name']);
-        $last_name = mysqli_real_escape_string($conn, $_POST['last_name']);
-        $phone_number = mysqli_real_escape_string($conn, $_POST['phone_number']);
+    $username = mysqli_real_escape_string($conn, $_POST['username']);
+    $email = mysqli_real_escape_string($conn, $_POST['email']);
+    $password = $_POST['password'];
+    $first_name = mysqli_real_escape_string($conn, $_POST['first_name']);
+    $last_name = mysqli_real_escape_string($conn, $_POST['last_name']);
+    $phone_number = mysqli_real_escape_string($conn, $_POST['phone_number']);
 
-        // Check if username or email already exists
-        $check_sql = "SELECT user_id FROM users WHERE username = '$username' OR email = '$email'";
-        $check_result = $conn->query($check_sql);
+    $errors = [];
 
-        if ($check_result->num_rows > 0) {
-            echo '<div class="alert alert-danger text-center">ชื่อผู้ใช้หรืออีเมลนี้มีอยู่ในระบบแล้ว</div>';
+    if (empty($username) || empty($email) || empty($password) || empty($first_name) || empty($last_name) || empty($phone_number)) {
+        $errors[] = "กรุณากรอกข้อมูลให้ครบถ้วน";
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "รูปแบบอีเมลไม่ถูกต้อง";
+    }
+
+    if (!isThaiPhoneNumber($phone_number)) {
+        $errors[] = "เบอร์โทรศัพท์ไม่ถูกต้อง (ต้องเป็นเบอร์ไทย 10 หลัก)";
+    }
+
+    if (!isValidName($first_name) || !isValidName($last_name)) {
+        $errors[] = "ชื่อและนามสกุลต้องเป็นภาษาไทยหรืออังกฤษเท่านั้น";
+    }
+
+    if (strlen($first_name) > 50 || strlen($last_name) > 50) {
+        $errors[] = "ชื่อและนามสกุลต้องไม่เกิน 50 ตัวอักษร";
+    }
+    // Check length of first name and last name
+    if (strlen($first_name) > 10) {
+        $errors[] = "ชื่อต้องไม่เกิน 10 ตัวอักษร";
+    }
+
+    if (strlen($last_name) > 10) {
+        $errors[] = "นามสกุลต้องไม่เกิน 10 ตัวอักษร";
+    }
+
+    // Check if username or email already exists
+    $check_sql = "SELECT user_id FROM users WHERE username = '$username' OR email = '$email'";
+    $check_result = $conn->query($check_sql);
+
+    if ($check_result->num_rows > 0) {
+        $errors[] = "ชื่อผู้ใช้หรืออีเมลนี้มีอยู่ในระบบแล้ว";
+    }
+
+    if (empty($errors)) {
+        // Insert new user
+        $sql = "INSERT INTO users (username, email, password, first_name, last_name, phone_number) VALUES ('$username', '$email', '$password', '$first_name', '$last_name', '$phone_number')";
+
+        if ($conn->query($sql) === TRUE) {
+            $user_id = $conn->insert_id;  // Get last insert ID
+
+            // Assign default role (user) - role_id = 2
+            $role_sql = "INSERT INTO user_roles (user_id, role_id) VALUES ($user_id, 2)";
+            $conn->query($role_sql);
+
+            $_SESSION['user_id'] = $user_id;
+            $_SESSION['username'] = $username;
+            // SweetAlert for success
+            echo "<script>
+                Swal.fire({
+                    icon: 'success',
+                    title: 'สมัครสมาชิกสำเร็จ!',
+                    text: 'ยินดีต้อนรับสู่เว็บไซต์ของเรา',
+                    confirmButtonText: 'ตกลง'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = 'index.php';
+                    }
+                });
+            </script>";
+            exit();
         } else {
-            // Insert new user
-            $sql = "INSERT INTO users (username, email, password, first_name, last_name, phone_number) VALUES ('$username', '$email', '$password', '$first_name', '$last_name', '$phone_number')";
-
-            if ($conn->query($sql) === TRUE) {
-                $user_id = $conn->insert_id;  // Get last insert ID
-
-                // Assign default role (user) - role_id = 2
-                $role_sql = "INSERT INTO user_roles (user_id, role_id) VALUES ($user_id, 2)";
-                $conn->query($role_sql);
-
-                $_SESSION['user_id'] = $user_id;
-                $_SESSION['username'] = $username;
-                header("Location: index.php");  // Redirect
-                exit();
-            } else {
-                echo '<div class="alert alert-danger text-center">เกิดข้อผิดพลาดในการสมัครสมาชิก: ' . $conn->error . '</div>';
-                error_log("Registration error: " . $conn->error); // Log the error
-            }
+            $error_message = "เกิดข้อผิดพลาดในการสมัครสมาชิก: " . $conn->error;
+            error_log("Registration error: " . $conn->error); // Log the error
+            // SweetAlert for database error
+            echo "<script>
+                Swal.fire({
+                    icon: 'error',
+                    title: 'เกิดข้อผิดพลาด!',
+                    text: '$error_message',
+                    confirmButtonText: 'ตกลง'
+                });
+            </script>";
         }
+    } else {
+        // Display errors using SweetAlert
+        $error_string = implode("<br>", $errors);
+        echo "<script>
+            Swal.fire({
+                icon: 'error',
+                title: 'มีข้อผิดพลาด!',
+                html: '$error_string',
+                confirmButtonText: 'ตกลง'
+            });
+        </script>";
     }
 }
 ?>
@@ -53,6 +126,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <!-- Custom CSS -->
     <link href="css/style.css" rel="stylesheet">
+    <!-- SweetAlert CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.0.18/dist/sweetalert2.min.css">
 </head>
 <body class="bg-light">
 <?php include "inc/navbar.php"; // Navigation Bar ?>
@@ -100,5 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<!-- SweetAlert JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.0.18/dist/sweetalert2.all.min.js"></script>
 </body>
 </html>
