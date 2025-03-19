@@ -1,0 +1,28 @@
+/* กำหนดค่า @tailwind ที่นี่เพื่อเริ่มต้น Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS เพิ่มเติม */
+body {
+    background-color: #f8f9fa; /* สีพื้นหลัง */
+}
+
+.card {
+    border-radius: 10px; /* ขอบมน */
+    border: none; /* ลบเส้นขอบ */
+}
+ืฟอ
+.card-title {
+    color: #28a745; /* สีเขียว */
+}
+
+.btn-success {
+    background-color: #28a745; /* สีเขียว */
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
